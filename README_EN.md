@@ -13,9 +13,9 @@ It identifies and connects to the camera using **BLE as the only online entry po
 - **BLE-First Connection Flow**: Scans for `GR_` / RICOH devices upon powering up, prioritizing the camera's BLE address and name stored in NVS.
 - **Dynamic Wi-Fi Credentials**: No longer depends on a fixed SSID/passphrase in `platformio.ini`. After the camera's Wi-Fi is woken up, the SSID, password, and BSSID are read via BLE.
 - **LiveView Real-Time Preview**: Connects to the camera's Wi-Fi, accesses the RICOH HTTP API, opens `/v1/liveview`, and displays the MJPEG video stream on the StickS3 screen.
-- **G11 External Shutter**: Triggers the BLE shutter sequence immediately when the GPIO11 button is pressed to GND.
+- **Button A Shutter**: Triggers the BLE shutter sequence when the StickS3 built-in Button A is pressed.
 - **Camera Power-Off Guard**: Enters a guard state when a proactive BLE disconnection from the camera is detected, preventing the StickS3 from waking the camera again during its shutdown process.
-- **Manual Wake & Reconnection**: After the cooldown period of the guard state ends, pressing G11 or Button B will re-wake and reconnect to the camera.
+- **Manual Wake & Reconnection**: After the cooldown period of the guard state ends, pressing Button A will re-wake and reconnect to the camera.
 - **Autoconnect on StickS3 Reboot**: The guard state is only kept in RAM. If the StickS3 itself reboots, it will start over from the BLE scan and autoconnect to the camera.
 
 ---
@@ -59,7 +59,7 @@ BLE scanning, BLE reconnection, and Wi-Fi activation are forbidden during 15-sec
   ↓
 Do not automatically wake the camera after cooldown ends
   ↓
-User presses G11 or Button B
+User presses Button A
   ↓
 Rebuild NimBLE stack, scan again, and reconnect to the camera
 ```
@@ -72,11 +72,9 @@ This prevents the StickS3 from sending a Wi-Fi wake command while the camera is 
 
 | Control | Function |
 | --- | --- |
-| G11 External Button | Triggers BLE shutter during LiveView; acts as manual wake / reconnect button in camera guard state |
-| Button B | Pauses / resumes LiveView; acts as manual wake / reconnect button in camera guard state |
-| Button A | Reserved |
+| Button A | Triggers BLE shutter during LiveView; acts as manual wake / reconnect button in camera guard state |
 
-G11 Hardware Wiring: Connect a button between **GPIO11 (G11)** and **GND**. The firmware uses `INPUT_PULLUP` and a falling-edge interrupt.
+Button A is the StickS3 built-in button (`M5.BtnA`); the firmware polls `wasPressed()` in `loop()`.
 
 ---
 
@@ -96,7 +94,6 @@ G11 Hardware Wiring: Connect a button between **GPIO11 (G11)** and **GND**. The 
 
 - M5Stack StickS3
 - RICOH GR III / GR IIIx / GR IV or any camera model compatible with the RICOH BLE control protocol
-- Optional: External G11 shutter button
 
 ---
 
@@ -164,8 +161,8 @@ BLE guard: remote disconnect reason=531; auto wake paused for 15s, then manual w
 Manual wake:
 
 ```text
-BLE guard: manual wake requested (G11 manual wake), previous disconnect reason=531
-BLE guard: manual wake BLE stack rebuild (G11 manual wake)
+BLE guard: manual wake requested (Button A manual wake), previous disconnect reason=531
+BLE guard: manual wake BLE stack rebuild (Button A manual wake)
 BLE: resetting stack (clear objects)
 BLE: scanning for GR camera
 ```
@@ -176,13 +173,13 @@ BLE: scanning for GR camera
 
 ### Camera should not be woken up after powering off
 
-This is the default behavior of the firmware. When a `531 / 533` disconnect reason is received, the system enters `CAMERA_SLEEP_GUARD` and will not automatically send a Wi-Fi ON command. Once the cooldown ends, you must press the G11 or Button B to wake the camera manually.
+This is the default behavior of the firmware. When a `531 / 533` disconnect reason is received, the system enters `CAMERA_SLEEP_GUARD` and will not automatically send a Wi-Fi ON command. Once the cooldown ends, you must press Button A to wake the camera manually.
 
 ### Will the StickS3 reconnect automatically after rebooting?
 
 Yes. The guard state is not written to NVS, so rebooting the StickS3 will start fresh from the BLE scanning and connection process.
 
-### The G11 shutter logs show "BLE shutter failed" but the camera still takes a photo
+### The Button A shutter logs show "BLE shutter failed" but the camera still takes a photo
 
 RICOH cameras may disconnect or reject the subsequent release command at the exact moment of capturing, causing the logs to show a write failure. As long as the camera successfully takes the picture and the LiveView recovers, this does not affect normal usage.
 
@@ -200,7 +197,7 @@ src/
   jpeg_decoder.*           JPEG decoding and display rendering
   display.*                StickS3 screen UI
   camera_profile_store.*   NVS camera profile storage
-  g11_button.*             G11 external button interrupt
+  buttons.*                StickS3 button polling (Button A)
 ```
 
 ## License
