@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <esp_heap_caps.h>
 
+#include "ble_pairing_policy.h"
 #include "ble_reconnect_policy.h"
 #include "buttons.h"
 #include "camera_identity.h"
@@ -745,6 +746,41 @@ bool serviceButtonsDuringBleOperation() {
   key2PairingResetRequested = true;
   Serial.println("BLE pairing reset: requested during BLE operation");
   return true;
+}
+
+// First-pairing passkey entry with BtnA: short press cycles the current digit,
+// hold confirms it (state machine in ble_pairing_policy, host-tested). Relies
+// on serviceButtonsDuringBleOperation() having run M5.update() in the same
+// wait-loop iteration; calling it again here would eat the very button edges
+// being read.
+PasskeyButtonEntry passkeyEntry;
+bool passkeyEntryActive = false;
+uint32_t passkeyLastPollMs = 0;
+
+int32_t pollPasskeyButtonEntry() {
+  const uint32_t now = millis();
+  if (!passkeyEntryActive || (now - passkeyLastPollMs) > 2000) {
+    passkeyEntryActive = true;
+    passkeyEntry.reset();
+    ui.showPasskeyEntry(passkeyEntry.digits(), passkeyEntry.activeIndex());
+  }
+  passkeyLastPollMs = now;
+
+  bool changed = false;
+  if (M5.BtnA.wasClicked()) {
+    passkeyEntry.shortPress();
+    changed = true;
+  } else if (M5.BtnA.wasHold()) {
+    if (passkeyEntry.hold()) {
+      passkeyEntryActive = false;
+      return passkeyEntry.code();
+    }
+    changed = true;
+  }
+  if (changed) {
+    ui.showPasskeyEntry(passkeyEntry.digits(), passkeyEntry.activeIndex());
+  }
+  return -1;
 }
 
 bool resetBlePairingIfRequested() {
@@ -1593,6 +1629,7 @@ void setup() {
   beginStickPower();
   buttons.begin();
   ricohBle.setServiceCallback(serviceButtonsDuringBleOperation);
+  ricohBle.setPasskeyPoller(pollPasskeyButtonEntry);
   decoder.begin();
   grWifi.begin();
 

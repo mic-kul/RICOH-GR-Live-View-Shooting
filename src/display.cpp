@@ -208,6 +208,48 @@ void DisplayUi::showError(const char* message, const char* detail) {
     pushCanvas();
 }
 
+void DisplayUi::showPasskeyEntry(const uint8_t digits[6], uint8_t activeIndex) {
+    clear(COLOR_BG);
+
+    const int16_t x = 8;
+    const int16_t y = 6;
+    const int16_t w = _width - 16;
+    const int16_t h = _height - 12;
+    _canvas.fillRoundRect(x, y, w, h, 10, COLOR_CARD);
+    _canvas.drawRoundRect(x, y, w, h, 10, COLOR_GRAPHITE);
+    _canvas.drawRoundRect(x + 2, y + 2, w - 4, h - 4, 8, COLOR_SLATE);
+
+    _canvas.setTextSize(1);
+    _canvas.setTextColor(COLOR_AMBER);
+    _canvas.setCursor(x + 14, y + 12);
+    _canvas.print("ENTER CAMERA PAIRING CODE");
+
+    const int16_t cellW = 30;
+    const int16_t cellH = 44;
+    const int16_t gap = 4;
+    const int16_t totalW = 6 * cellW + 5 * gap;
+    int16_t cx = x + (w - totalW) / 2;
+    const int16_t cy = y + 28;
+    for (uint8_t i = 0; i < 6; i++) {
+        const bool active = (i == activeIndex);
+        const bool confirmed = (i < activeIndex);
+        _canvas.fillRoundRect(cx, cy, cellW, cellH, 6, active ? COLOR_SLATE : COLOR_PANEL);
+        _canvas.drawRoundRect(cx, cy, cellW, cellH, 6, active ? COLOR_AMBER : COLOR_GRAPHITE);
+        _canvas.setTextSize(3);
+        _canvas.setTextColor(confirmed ? COLOR_WHITE : (active ? COLOR_AMBER : COLOR_GRAY));
+        _canvas.setCursor(cx + 7, cy + 11);
+        _canvas.print(static_cast<char>('0' + (digits[i] % 10)));
+        cx += cellW + gap;
+    }
+
+    _canvas.setTextSize(1);
+    _canvas.setTextColor(COLOR_GRAY);
+    _canvas.setCursor(x + 14, y + h - 20);
+    _canvas.print("BtnA: +1  hold BtnA: next digit");
+
+    pushCanvas();
+}
+
 void DisplayUi::showError(const String& message, const String& detail) {
     showError(message.c_str(), detail.length() ? detail.c_str() : nullptr);
 }

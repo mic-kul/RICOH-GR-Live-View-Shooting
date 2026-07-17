@@ -8,6 +8,7 @@
 void setUp(void) {}
 void tearDown(void) {}
 
+#include "ble_pairing_policy.h"
 #include "ble_reconnect_policy.h"
 
 #include "camera_identity.h"
@@ -242,10 +243,111 @@ void testSupervisorReportsFrameStallDespiteIncomingBytes() {
   TEST_ASSERT_EQUAL_STRING("supervisor preview frame idle", message.detail);
 }
 
+void testNormalizesResolvedPeerAddressTypes() {
+  TEST_ASSERT_EQUAL_UINT8(0x00, normalizedPeerAddressType(0x00));
+  TEST_ASSERT_EQUAL_UINT8(0x01, normalizedPeerAddressType(0x01));
+  TEST_ASSERT_EQUAL_UINT8(0x00, normalizedPeerAddressType(0x02));
+  TEST_ASSERT_EQUAL_UINT8(0x01, normalizedPeerAddressType(0x03));
+}
+
+void testClassifiesInsufficientAuthAttErrors() {
+  TEST_ASSERT_TRUE(attErrorMeansInsufficientAuth(0x105));   // insufficient authentication
+  TEST_ASSERT_TRUE(attErrorMeansInsufficientAuth(0x108));   // insufficient authorization
+  TEST_ASSERT_TRUE(attErrorMeansInsufficientAuth(0x10F));   // insufficient encryption
+  TEST_ASSERT_FALSE(attErrorMeansInsufficientAuth(0x101));  // invalid handle
+  TEST_ASSERT_FALSE(attErrorMeansInsufficientAuth(0));
+}
+
+void testDropsStaleBondAfterThreeSecurityFailures() {
+  PairingRecoveryPolicy policy;
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_TRUE(policy.onBondedSecurityFailure());
+  // Counter restarts after the drop.
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_TRUE(policy.onBondedSecurityFailure());
+}
+
+void testPairingSuccessResetsSecurityFailureCount() {
+  PairingRecoveryPolicy policy;
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  policy.onPairingSuccess();
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_FALSE(policy.onBondedSecurityFailure());
+  TEST_ASSERT_TRUE(policy.onBondedSecurityFailure());
+}
+
+void testDropsUnauthenticatedBondAfterTwoRejectedReads() {
+  PairingRecoveryPolicy policy;
+  TEST_ASSERT_FALSE(policy.onInsufficientAuthRead());
+  TEST_ASSERT_TRUE(policy.onInsufficientAuthRead());
+  // An authenticated read in between keeps the bond.
+  TEST_ASSERT_FALSE(policy.onInsufficientAuthRead());
+  policy.onAuthenticatedRead();
+  TEST_ASSERT_FALSE(policy.onInsufficientAuthRead());
+  TEST_ASSERT_TRUE(policy.onInsufficientAuthRead());
+}
+
+void testPasskeyDigitCollectorIgnoresNonDigitsAndCompletesAtSix() {
+  PasskeyDigitCollector collector;
+  const char* input = "2x5 6\r4:45";
+  int32_t code = -1;
+  for (const char* c = input; *c != '\0'; c++) {
+    const int32_t result = collector.feed(*c);
+    if (result >= 0) {
+      code = result;
+    }
+  }
+  TEST_ASSERT_EQUAL_INT32(256445, code);
+  // Collector restarts for the next pairing attempt.
+  TEST_ASSERT_EQUAL_INT32(-1, collector.feed('1'));
+}
+
+void testPasskeyButtonEntryCyclesConfirmsAndWraps() {
+  PasskeyButtonEntry entry;
+  entry.reset();
+
+  // Digit 1: five presses -> 5.
+  for (int i = 0; i < 5; i++) {
+    entry.shortPress();
+  }
+  TEST_ASSERT_EQUAL_UINT8(5, entry.digits()[0]);
+  TEST_ASSERT_FALSE(entry.hold());
+  TEST_ASSERT_EQUAL_UINT8(1, entry.activeIndex());
+
+  // Digit 2: eleven presses wrap 9->0 and land on 1.
+  for (int i = 0; i < 11; i++) {
+    entry.shortPress();
+  }
+  TEST_ASSERT_EQUAL_UINT8(1, entry.digits()[1]);
+  TEST_ASSERT_FALSE(entry.hold());
+
+  // Remaining digits stay 0; confirm them all.
+  TEST_ASSERT_FALSE(entry.hold());
+  TEST_ASSERT_FALSE(entry.hold());
+  TEST_ASSERT_FALSE(entry.hold());
+  TEST_ASSERT_TRUE(entry.hold());
+  TEST_ASSERT_EQUAL_INT32(510000, entry.code());
+
+  // Reset clears everything for the next pairing attempt.
+  entry.reset();
+  TEST_ASSERT_EQUAL_UINT8(0, entry.activeIndex());
+  TEST_ASSERT_EQUAL_INT32(0, entry.code());
+}
+
 }  // namespace
 
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(testNormalizesResolvedPeerAddressTypes);
+  RUN_TEST(testClassifiesInsufficientAuthAttErrors);
+  RUN_TEST(testDropsStaleBondAfterThreeSecurityFailures);
+  RUN_TEST(testPairingSuccessResetsSecurityFailureCount);
+  RUN_TEST(testDropsUnauthenticatedBondAfterTwoRejectedReads);
+  RUN_TEST(testPasskeyDigitCollectorIgnoresNonDigitsAndCompletesAtSix);
+  RUN_TEST(testPasskeyButtonEntryCyclesConfirmsAndWraps);
   RUN_TEST(testBeginRejectsInvalidInputs);
   RUN_TEST(testDeliversFrameSplitAcrossChunks);
   RUN_TEST(testDropsShortFrame);

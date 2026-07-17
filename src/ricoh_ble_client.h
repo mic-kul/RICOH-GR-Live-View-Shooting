@@ -51,9 +51,13 @@ enum class RicohCameraOperationMode {
 class RicohBleClient {
 public:
   using ServiceCallback = bool (*)();
+  // Polled while the camera waits for its displayed pairing code. Return the
+  // 6-digit code once the user has finished entering it, or -1 while pending.
+  using PasskeyPoller = int32_t (*)();
 
   void begin();
   void setServiceCallback(ServiceCallback callback);
+  void setPasskeyPoller(PasskeyPoller poller);
   RicohBleDeviceInfo scanForCamera(const String& preferredAddress, const String& preferredName, uint32_t scanSeconds);
   bool connect(const RicohBleDeviceInfo& info, uint32_t timeoutMs);
   bool connect(const RicohBleDeviceInfo& info, const RicohBleConnectOptions& options);
